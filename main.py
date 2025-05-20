@@ -36,19 +36,22 @@ def webhook():
     data = request.json
     print(f"==> Data recibida: {data}")
 
-    if not data:
-        print("==> No se recibió data JSON válida")
-        return jsonify({"status": "no json"}), 400
-
+    # Intentar extraer los datos directamente
     numero = data.get("from")
     mensaje = data.get("body", "")
-    tipo = data.get("type")
+    tipo = data.get("type", "")
+
+    # Si no están en el primer nivel, probar dentro de 'data'
+    if not numero and "data" in data:
+        numero = data["data"].get("from")
+        mensaje = data["data"].get("body", "")
+        tipo = data["data"].get("type", "")
+
+    print(f"==> Número: {numero}, Tipo: {tipo}, Mensaje: {mensaje}")
 
     if not numero:
         print("==> No se recibió número")
         return jsonify({"status": "sin número"}), 200
-
-    print(f"Mensaje recibido de {numero}: {mensaje}")
 
     estado = estado_usuario.get(numero, "inicio")
 
@@ -74,8 +77,16 @@ def webhook():
 
     elif estado == "esperando_comprobante":
         if tipo == "image":
-            url_imagen = data.get("media", {}).get("url")
-            caption = data.get("caption", "")
+            url_imagen = None
+            caption = ""
+            if "media" in data and isinstance(data["media"], dict):
+                url_imagen = data["media"].get("url")
+            elif "data" in data and "media" in data["data"]:
+                url_imagen = data["data"]["media"].get("url")
+                caption = data["data"].get("caption", "")
+            else:
+                caption = data.get("caption", "")
+
             if url_imagen:
                 descargar_imagen(url_imagen, f"{numero}_comprobante.jpg")
                 print(f"🖼️ Imagen descargada para {numero} con texto: {caption}")
