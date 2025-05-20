@@ -1,0 +1,6 @@
+# Ignorar archivos sensibles y temporales
+credentials/
+*.json
+__pycache__/
+temp/
+.env
