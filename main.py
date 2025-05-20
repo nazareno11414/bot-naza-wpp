@@ -61,7 +61,6 @@ def webhook():
     numero = data.get("data", {}).get("from", "")
     tipo = data.get("data", {}).get("type", "")
     from_me = data.get("data", {}).get("fromMe", False)
-    url_media = data.get("data", {}).get("media", "")
 
     if from_me or not numero:
         return jsonify({"status": "ignored"}), 200
@@ -70,7 +69,6 @@ def webhook():
         numero = numero.replace("@c.us", "")
 
     mensaje = mensaje.strip()
-
     estado = estado_usuarios.get(numero, {"estado": None})
 
     if tipo == "chat":
@@ -118,29 +116,37 @@ def webhook():
             enviar_mensaje(numero, "❌ Opción no válida. Escriba 'Hola' para comenzar.")
 
     elif tipo in ["image", "document"] and estado.get("estado") == "esperando_archivos":
-        url = data["data"].get("body")
-        extension = ".jpg" if tipo == "image" else ".pdf"
+        url = data["data"].get("media") or data["data"].get("url")
 
+        if not url:
+            enviar_mensaje(numero, "❌ No pude obtener el enlace del archivo. Intente reenviar la imagen o PDF.")
+            print("📎 La clave 'media/url' vino vacía:", data["data"])
+            return jsonify({"status": "ok"}), 200
+
+        extension = ".jpg" if tipo == "image" else ".pdf"
         datos = estado["datos"]
         timestamp = estado["timestamp"]
         contador = estado["contador"]
 
         filename = f"{datos}_{timestamp}_{contador}{extension}"
         filepath = os.path.join("temp", filename)
-
         os.makedirs("temp", exist_ok=True)
 
-        # Descargar el archivo
         try:
             r = requests.get(url)
+            r.raise_for_status()
+
             with open(filepath, "wb") as f:
                 f.write(r.content)
+
             subir_a_drive(filepath, filename)
-            enviar_mensaje(numero, f"✅ Comprobante recibido y subido como: {filename}")
+            enviar_mensaje(numero, f"✅ Archivo recibido y subido como: {filename}")
             estado_usuarios[numero]["contador"] += 1
+
         except Exception as e:
             enviar_mensaje(numero, "❌ Error al procesar el archivo.")
-            print("❌ Error:", e)
+            print("❌ Error al descargar o subir archivo:", e)
+
     else:
         print("📎 Mensaje ignorado o fuera de flujo.")
 
