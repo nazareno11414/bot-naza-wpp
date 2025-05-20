@@ -1,13 +1,32 @@
 from flask import Flask, request, jsonify
 import os
 import requests
+import re
+import time
+from datetime import datetime
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 app = Flask(__name__)
 
-# Variables de entorno para seguridad
+# UltraMsg config
 INSTANCE_ID = os.environ.get("ULTRAMSG_INSTANCE_ID")
 TOKEN = os.environ.get("ULTRAMSG_TOKEN")
 API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
+
+# Google Drive config
+SERVICE_ACCOUNT_FILE = 'bot-whatsapp-comprobantes-c2ba3502495c.json'
+DRIVE_FOLDER_ID = '1_Ga4XFmGEPvaAfkHENpXAhkVdA4IP9wD'
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
+
+credentials = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+)
+drive_service = build('drive', 'v3', credentials=credentials)
+
+# Estados por usuario
+estado_usuarios = {}
 
 def enviar_mensaje(numero, mensaje):
     payload = {
@@ -19,54 +38,111 @@ def enviar_mensaje(numero, mensaje):
     print(f"🔁 UltraMsg Response: {response.status_code} - {response.text}")
     return response
 
+def subir_a_drive(nombre_local, nombre_en_drive, carpeta_id=DRIVE_FOLDER_ID):
+    file_metadata = {
+        'name': nombre_en_drive,
+        'parents': [carpeta_id]
+    }
+    media = MediaFileUpload(nombre_local, resumable=True)
+    archivo = drive_service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields='id'
+    ).execute()
+    print(f"✅ Archivo subido: {nombre_en_drive}")
+    return archivo.get('id')
+
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.get_json()
     print("==> Data recibida:", data)
 
-    # Extraemos la info del mensaje
-    mensaje = data.get("data", {}).get("body")
-    numero = data.get("data", {}).get("from")
-    from_me = data.get("data", {}).get("fromMe", False)  # <-- FILTRO PARA NO RESPONDER AL PROPIO BOT
+    mensaje = data.get("data", {}).get("body", "")
+    numero = data.get("data", {}).get("from", "")
+    tipo = data.get("data", {}).get("type", "")
+    from_me = data.get("data", {}).get("fromMe", False)
+    url_media = data.get("data", {}).get("media", "")
 
-    # Evitar bucle infinito: si el mensaje es del propio bot, ignorar
-    if from_me:
-        print("Mensaje enviado por el bot, no se procesa para evitar bucle.")
+    if from_me or not numero:
         return jsonify({"status": "ignored"}), 200
 
-    if not numero or not mensaje:
-        return jsonify({"status": "error", "message": "Missing 'from' or 'body'"}), 400
-
-    # Limpiamos el número para quitar el sufijo '@c.us'
     if numero.endswith("@c.us"):
         numero = numero.replace("@c.us", "")
 
-    mensaje = mensaje.strip().lower()
+    mensaje = mensaje.strip()
 
-    if mensaje == "hola":
-        respuesta = (
-            "1️⃣ Enviar comprobante\n"
-            "2️⃣ Consultar estado de cuenta\n"
-            "3️⃣ Hablar con un operador\n\n"
-            "Por favor, responda con el número de la opción deseada."
-        )
-        enviar_mensaje(numero, respuesta)
+    estado = estado_usuarios.get(numero, {"estado": None})
 
-    elif mensaje == "1":
-        respuesta = "📸 Por favor, envíe la *foto del comprobante* seguida de la UF y altura.\nEjemplo: UF 12 Altura 4B"
-        enviar_mensaje(numero, respuesta)
+    if tipo == "chat":
+        msg_lower = mensaje.lower()
 
-    elif mensaje == "2":
-        respuesta = "💰 Su estado de cuenta se encuentra *al día*. Gracias por su consulta."
-        enviar_mensaje(numero, respuesta)
+        if msg_lower == "hola":
+            respuesta = (
+                "1️⃣ Enviar comprobante\n"
+                "2️⃣ Consultar estado de cuenta\n"
+                "3️⃣ Hablar con un operador\n\n"
+                "Por favor, responda con el número de la opción deseada."
+            )
+            estado_usuarios[numero] = {"estado": None}
+            enviar_mensaje(numero, respuesta)
 
-    elif mensaje == "3":
-        respuesta = "📞 Será atendido por un operador en breve."
-        enviar_mensaje(numero, respuesta)
+        elif msg_lower == "1":
+            respuesta = (
+                "📸 Por favor, envíe la *foto o fotos del comprobante*, seguidas de su UF o departamento "
+                "y la altura del edificio.\n\n"
+                "Ejemplos:\n• UF2 - SM320\n• 3ºA - S254"
+            )
+            estado_usuarios[numero] = {"estado": "esperando_datos"}
+            enviar_mensaje(numero, respuesta)
 
+        elif msg_lower == "2":
+            enviar_mensaje(numero, "💰 Su estado de cuenta se encuentra *al día*. Gracias por su consulta.")
+
+        elif msg_lower == "3":
+            enviar_mensaje(numero, "📞 Será atendido por un operador en breve.")
+
+        elif estado["estado"] == "esperando_datos":
+            patron = re.compile(r"(UF\d+|\d+º[A-Z])\s*-\s*[A-Z]+\d+", re.IGNORECASE)
+            if patron.match(mensaje):
+                estado_usuarios[numero] = {
+                    "estado": "esperando_archivos",
+                    "datos": mensaje.replace(" ", "_"),
+                    "timestamp": datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+                    "contador": 1
+                }
+                enviar_mensaje(numero, "✅ Datos validados. Ahora puede enviar sus comprobantes (imagen o PDF).")
+            else:
+                enviar_mensaje(numero, "❌ Formato inválido. Envíe como: UF2 - SM320 o 3ºA - S254")
+
+        else:
+            enviar_mensaje(numero, "❌ Opción no válida. Escriba 'Hola' para comenzar.")
+
+    elif tipo in ["image", "document"] and estado.get("estado") == "esperando_archivos":
+        url = data["data"].get("body")
+        extension = ".jpg" if tipo == "image" else ".pdf"
+
+        datos = estado["datos"]
+        timestamp = estado["timestamp"]
+        contador = estado["contador"]
+
+        filename = f"{datos}_{timestamp}_{contador}{extension}"
+        filepath = os.path.join("temp", filename)
+
+        os.makedirs("temp", exist_ok=True)
+
+        # Descargar el archivo
+        try:
+            r = requests.get(url)
+            with open(filepath, "wb") as f:
+                f.write(r.content)
+            subir_a_drive(filepath, filename)
+            enviar_mensaje(numero, f"✅ Comprobante recibido y subido como: {filename}")
+            estado_usuarios[numero]["contador"] += 1
+        except Exception as e:
+            enviar_mensaje(numero, "❌ Error al procesar el archivo.")
+            print("❌ Error:", e)
     else:
-        respuesta = "❌ Opción no válida. Por favor, envíe 'Hola' para comenzar."
-        enviar_mensaje(numero, respuesta)
+        print("📎 Mensaje ignorado o fuera de flujo.")
 
     return jsonify({"status": "ok"}), 200
 
