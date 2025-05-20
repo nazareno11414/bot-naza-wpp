@@ -1,16 +1,17 @@
 from flask import Flask, request, jsonify
-import requests
 import os
+import requests
 
 app = Flask(__name__)
 
-instance_id = os.environ.get("ULTRAMSG_INSTANCE_ID")
-token = os.environ.get("ULTRAMSG_TOKEN")
-API_URL = f"https://api.ultramsg.com/{instance_id}/messages/chat"
+# Variables de entorno para seguridad
+INSTANCE_ID = os.environ.get("ULTRAMSG_INSTANCE_ID")
+TOKEN = os.environ.get("ULTRAMSG_TOKEN")
+API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
 def enviar_mensaje(numero, mensaje):
     payload = {
-        "token": token,
+        "token": TOKEN,
         "to": numero,
         "body": mensaje
     }
@@ -23,12 +24,20 @@ def webhook():
     data = request.get_json()
     print("==> Data recibida:", data)
 
+    # Extraemos la info del mensaje
     mensaje = data.get("data", {}).get("body")
     numero = data.get("data", {}).get("from")
+    from_me = data.get("data", {}).get("fromMe", False)  # <-- FILTRO PARA NO RESPONDER AL PROPIO BOT
+
+    # Evitar bucle infinito: si el mensaje es del propio bot, ignorar
+    if from_me:
+        print("Mensaje enviado por el bot, no se procesa para evitar bucle.")
+        return jsonify({"status": "ignored"}), 200
 
     if not numero or not mensaje:
         return jsonify({"status": "error", "message": "Missing 'from' or 'body'"}), 400
 
+    # Limpiamos el número para quitar el sufijo '@c.us'
     if numero.endswith("@c.us"):
         numero = numero.replace("@c.us", "")
 
