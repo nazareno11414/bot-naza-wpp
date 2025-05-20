@@ -1,61 +1,67 @@
 from flask import Flask, request, jsonify
 import requests
-import os
 
 app = Flask(__name__)
 
-# Configuración de UltraMsg
-INSTANCE_ID = os.getenv("INSTANCE_ID", "TU_INSTANCE_ID")
-TOKEN = os.getenv("TOKEN", "TU_TOKEN_ULTRAMSG")
+INSTANCE_ID = "instance121041"
+TOKEN = "nep6e0ap1ru4s6wg"
 API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
-# Menú principal
-MENU = """📋 *Menú de opciones*
-1️⃣ Enviar comprobante
-2️⃣ Consultar saldo
-3️⃣ Hablar con un operador
-Responde con el número de la opción."""
+# Para evitar bucles infinitos
+RESPONDIDOS = set()
 
-@app.route('/', methods=['POST'])
+@app.route("/", methods=["POST"])
 def webhook():
     data = request.get_json()
 
-    # Extraer información básica
-    try:
-        numero = data.get("from", "").replace("@c.us", "")
-        mensaje = data.get("body", "").strip().lower()
-    except:
-        print("==> No se recibió número o mensaje")
-        return jsonify({"status": "error"}), 400
+    if not data or "data" not in data:
+        return jsonify({"error": "No se recibió información válida"}), 400
+
+    mensaje_info = data["data"]
+
+    # Extraer información
+    numero = mensaje_info.get("from", "").replace("@c.us", "")
+    mensaje = mensaje_info.get("body", "")
+    tipo = mensaje_info.get("type", "")
+
+    # Evitar responder a mensajes propios o sin número
+    if mensaje_info.get("fromMe") or not numero:
+        return jsonify({"status": "ignorado"})
 
     print(f"Mensaje recibido de {numero}: {mensaje}")
 
+    # Evitar responder múltiples veces al mismo mensaje
+    msg_id = mensaje_info.get("id")
+    if msg_id in RESPONDIDOS:
+        return jsonify({"status": "repetido"})
+    RESPONDIDOS.add(msg_id)
+
     # Lógica de respuestas
-    if mensaje in ["hola", "menú", "menu", "buenas"]:
-        enviar_mensaje(numero, MENU)
-    elif mensaje == "1":
-        enviar_mensaje(numero, "📸 Por favor, envíe la *foto del comprobante* seguida de la UF y altura.\nEjemplo: UF 12 Altura 4B")
-    elif mensaje == "2":
-        enviar_mensaje(numero, "💰 Su saldo actual es de $12.345,67")
-    elif mensaje == "3":
-        enviar_mensaje(numero, "👤 Un operador se comunicará con usted pronto.")
-    else:
-        enviar_mensaje(numero, "❌ Opción no válida. Por favor elija una opción del menú:\n" + MENU)
+    if tipo == "text":
+        mensaje = mensaje.lower().strip()
 
-    return jsonify({"status": "ok"}), 200
+        if mensaje == "1":
+            respuesta = "✅ Opción 1 seleccionada: Aquí va la info del consorcio."
+        elif mensaje == "2":
+            respuesta = "📷 Opción 2 seleccionada: Envíe la *foto del comprobante* seguida de la UF y altura.\nEjemplo: UF 12 Altura 4B"
+        else:
+            respuesta = (
+                "📋 *Menú de opciones*\n"
+                "1️⃣ Ver datos del consorcio\n"
+                "2️⃣ Enviar comprobante de pago\n"
+                "Por favor, responda con el número de la opción."
+            )
 
-def enviar_mensaje(numero, mensaje):
-    payload = {
-        "token": TOKEN,
-        "to": numero,
-        "body": mensaje
-    }
+        # Enviar respuesta
+        payload = {
+            "to": numero,
+            "body": respuesta
+        }
+        headers = {"Content-Type": "application/json"}
+        requests.post(API_URL, json=payload, headers=headers)
 
-    try:
-        response = requests.post(API_URL, data=payload)
-        print(f"Mensaje enviado a {numero}: {mensaje}")
-    except Exception as e:
-        print(f"Error al enviar mensaje: {e}")
+    return jsonify({"status": "ok"})
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
