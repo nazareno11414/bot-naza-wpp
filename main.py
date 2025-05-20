@@ -1,16 +1,17 @@
 from flask import Flask, request, jsonify
 import requests
+import os
 
 app = Flask(__name__)
 
-# Tu info de UltraMsg
-INSTANCE_ID = "instance121041"
-TOKEN = "nep6e0ap1ru4s6wg"
-API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
+# Tu info de UltraMsg desde variables de entorno
+instance_id = os.environ.get("ULTRAMSG_INSTANCE_ID")
+token = os.environ.get("ULTRAMSG_TOKEN")
+API_URL = f"https://api.ultramsg.com/{instance_id}/messages/chat"
 
 def enviar_mensaje(numero, mensaje):
     payload = {
-        "token": TOKEN,
+        "token": token,
         "to": numero,
         "body": mensaje
     }
@@ -61,7 +62,6 @@ def webhook():
         enviar_mensaje(numero, respuesta)
 
     return jsonify({"status": "ok"}), 200
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
