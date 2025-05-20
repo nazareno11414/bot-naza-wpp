@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
+import os
 
 app = Flask(__name__)
 
@@ -18,22 +19,31 @@ def enviar_mensaje(to, mensaje):
         "to": to,
         "body": mensaje
     }
-    requests.get(url, params=params)
+    print(f"==> Enviando mensaje a {to}: {mensaje}")  # PRINT para debug
+    response = requests.get(url, params=params)
+    print(f"==> Respuesta UltraMsg: {response.status_code} {response.text}")  # PRINT respuesta UltraMsg
 
 # Descargar archivo de imagen
 def descargar_imagen(url_archivo, nombre_archivo="comprobante.jpg"):
+    print(f"==> Descargando imagen desde {url_archivo} guardando como {nombre_archivo}")
     r = requests.get(url_archivo)
     with open(nombre_archivo, "wb") as f:
         f.write(r.content)
+    print(f"==> Imagen guardada: {nombre_archivo}")
 
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.json
+    print(f"==> Data recibida: {data}")
+
     numero = data.get("from")
     mensaje = data.get("body", "")
     tipo = data.get("type")
 
+    print(f"==> Número: {numero}, Tipo: {tipo}, Mensaje: {mensaje}")
+
     if not numero:
+        print("==> No se recibió número")
         return jsonify({"status": "sin número"}), 200
 
     estado = estado_usuario.get(numero, "inicio")
@@ -74,7 +84,6 @@ def webhook():
 
     return jsonify({"status": "ok"}), 200
 
-import os
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
