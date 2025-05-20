@@ -33,15 +33,22 @@ def descargar_imagen(url_archivo, nombre_archivo="comprobante.jpg"):
 
 @app.route("/", methods=["POST"])
 def webhook():
-    print("==> Entró a webhook")
     data = request.json
     print(f"==> Data recibida: {data}")
-    
-    print(f"Mensaje recibido de {numero}: {mensaje}")  # <-- acá imprimís
-    
+
+    if not data:
+        print("==> No se recibió data JSON válida")
+        return jsonify({"status": "no json"}), 400
+
+    numero = data.get("from")
+    mensaje = data.get("body", "")
+    tipo = data.get("type")
+
     if not numero:
         print("==> No se recibió número")
         return jsonify({"status": "sin número"}), 200
+
+    print(f"Mensaje recibido de {numero}: {mensaje}")
 
     estado = estado_usuario.get(numero, "inicio")
 
