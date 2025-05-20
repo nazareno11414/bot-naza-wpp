@@ -140,7 +140,7 @@ def webhook():
                 f.write(r.content)
 
             subir_a_drive(filepath, filename)
-            enviar_mensaje(numero, f"✅ Archivo recibido y subido como: {filename}")
+            enviar_mensaje(numero, f"✅ Archivo recibido y subido en la brevedad le aplicaremos el pago")
             estado_usuarios[numero]["contador"] += 1
 
         except Exception as e:
