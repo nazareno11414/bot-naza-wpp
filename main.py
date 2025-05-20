@@ -16,7 +16,7 @@ TOKEN = os.environ.get("ULTRAMSG_TOKEN")
 API_URL = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
 
 # Google Drive config
-SERVICE_ACCOUNT_FILE = '/credentials/bot-whatsapp-comprobantes-c2ba3502495c.json'
+SERVICE_ACCOUNT_FILE = '/etc/secrets/bot-whatsapp-comprobantes-c2ba3502495c.json'
 DRIVE_FOLDER_ID = '1_Ga4XFmGEPvaAfkHENpXAhkVdA4IP9wD'
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
