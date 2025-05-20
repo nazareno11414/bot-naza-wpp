@@ -1,108 +1,44 @@
 from flask import Flask, request, jsonify
-import requests
-import os
 
 app = Flask(__name__)
-estado_usuario = {}
-
-INSTANCE_ID = "instance121041"
-TOKEN = "nep6e0ap1ru4s6wg"
-
-def enviar_mensaje(to, mensaje):
-    url = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
-    params = {
-        "token": TOKEN,
-        "to": to,
-        "body": mensaje
-    }
-    print(f"==> Enviando mensaje a {to}: {mensaje}")
-    response = requests.get(url, params=params)
-    print(f"==> Respuesta UltraMsg: {response.status_code} {response.text}")
-
-def descargar_imagen(url_archivo, nombre_archivo="comprobante.jpg"):
-    print(f"==> Descargando imagen desde {url_archivo} guardando como {nombre_archivo}")
-    r = requests.get(url_archivo)
-    with open(nombre_archivo, "wb") as f:
-        f.write(r.content)
-    print(f"==> Imagen guardada: {nombre_archivo}")
 
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.json
-    print(f"==> Data recibida: {data}")
+    print("==> Data recibida:", data)
 
-    # Filtrar mensajes enviados por el bot para evitar bucles
-    from_me = False
-    if "fromMe" in data:
-        from_me = data["fromMe"]
-    elif "data" in data and "fromMe" in data["data"]:
-        from_me = data["data"]["fromMe"]
-
-    if from_me:
-        print("==> Mensaje propio, ignorando para evitar bucle")
+    # Verificamos si es un mensaje que el bot mismo envió
+    if "data" in data and data["data"].get("fromMe", False):
+        print("==> Ignorando mensaje propio para evitar bucle")
         return jsonify({"status": "ignored"}), 200
 
-    numero = data.get("from")
     mensaje = data.get("body", "")
-    tipo = data.get("type", "")
-
-    if not numero and "data" in data:
-        numero = data["data"].get("from")
-        mensaje = data["data"].get("body", "")
-        tipo = data["data"].get("type", "")
-
-    print(f"==> Número: {numero}, Tipo: {tipo}, Mensaje: {mensaje}")
+    numero = data.get("from", "")
 
     if not numero:
         print("==> No se recibió número")
-        return jsonify({"status": "sin número"}), 200
+        return jsonify({"error": "Número no encontrado"}), 400
 
-    estado = estado_usuario.get(numero, "inicio")
+    print(f"Mensaje recibido de {numero}: {mensaje}")
 
-    if estado == "inicio":
-        menu = (
-            "👋 Bienvenido al celu de Naza\n"
-            "Elija una opción:\n\n"
-            "1️⃣ Mandar comprobante\n"
-            "(responda solo con el número)"
-        )
-        enviar_mensaje(numero, menu)
-        estado_usuario[numero] = "esperando_opcion"
-
-    elif estado == "esperando_opcion":
-        if mensaje.strip() == "1":
-            enviar_mensaje(
-                numero,
-                "📸 Por favor, envíe la *foto del comprobante* seguida de la UF y altura.\nEjemplo: UF 12 Altura 4B"
-            )
-            estado_usuario[numero] = "esperando_comprobante"
+    # Verificamos si es texto
+    if data.get("type") == "text":
+        if mensaje.lower() == "comprobante":
+            respuesta = "📸 Por favor, envíe la *foto del comprobante* seguida de la UF y altura.\nEjemplo: UF 12 Altura 4B"
         else:
-            enviar_mensaje(numero, "❌ Opción no válida. Por favor, elija una opción del menú (1).")
+            respuesta = "📝 Bienvenido al bot.\nEscriba *comprobante* para enviar su pago."
+    
+    # Si es imagen
+    elif data.get("type") == "image":
+        respuesta = "✅ Imagen recibida correctamente. Gracias."
 
-    elif estado == "esperando_comprobante":
-        if tipo == "image":
-            url_imagen = None
-            caption = ""
-            if "media" in data and isinstance(data["media"], dict):
-                url_imagen = data["media"].get("url")
-            elif "data" in data and "media" in data["data"]:
-                url_imagen = data["data"]["media"].get("url")
-                caption = data["data"].get("caption", "")
-            else:
-                caption = data.get("caption", "")
+    else:
+        respuesta = "❗ Tipo de mensaje no reconocido."
 
-            if url_imagen:
-                descargar_imagen(url_imagen, f"{numero}_comprobante.jpg")
-                print(f"🖼️ Imagen descargada para {numero} con texto: {caption}")
-                enviar_mensaje(numero, "✅ Comprobante recibido. ¡Gracias!")
-                estado_usuario[numero] = "inicio"
-            else:
-                enviar_mensaje(numero, "⚠️ No pude obtener la imagen. Intente de nuevo.")
-        else:
-            enviar_mensaje(numero, "📷 Por favor, envíe una *imagen* con el texto: UF y altura.")
+    # Simulación de envío de mensaje de vuelta (acá podrías llamar a UltraMsg API)
+    print(f"==> Enviar a {numero}: {respuesta}")
 
-    return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "success"}), 200
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
