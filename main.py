@@ -4,7 +4,6 @@ import os
 
 app = Flask(__name__)
 
-# Tu info de UltraMsg desde variables de entorno
 instance_id = os.environ.get("ULTRAMSG_INSTANCE_ID")
 token = os.environ.get("ULTRAMSG_TOKEN")
 API_URL = f"https://api.ultramsg.com/{instance_id}/messages/chat"
@@ -30,7 +29,6 @@ def webhook():
     if not numero or not mensaje:
         return jsonify({"status": "error", "message": "Missing 'from' or 'body'"}), 400
 
-    # Eliminar dominio "@c.us" si lo tiene
     if numero.endswith("@c.us"):
         numero = numero.replace("@c.us", "")
 
