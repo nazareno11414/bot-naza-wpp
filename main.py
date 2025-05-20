@@ -3,15 +3,11 @@ import requests
 import os
 
 app = Flask(__name__)
-
-# Estado por número: guarda en qué parte del flujo está cada persona
 estado_usuario = {}
 
-# Tu token e ID de instancia UltraMsg
 INSTANCE_ID = "instance121041"
 TOKEN = "nep6e0ap1ru4s6wg"
 
-# Enviar mensaje
 def enviar_mensaje(to, mensaje):
     url = f"https://api.ultramsg.com/{INSTANCE_ID}/messages/chat"
     params = {
@@ -19,11 +15,10 @@ def enviar_mensaje(to, mensaje):
         "to": to,
         "body": mensaje
     }
-    print(f"==> Enviando mensaje a {to}: {mensaje}")  # PRINT para debug
+    print(f"==> Enviando mensaje a {to}: {mensaje}")
     response = requests.get(url, params=params)
-    print(f"==> Respuesta UltraMsg: {response.status_code} {response.text}")  # PRINT respuesta UltraMsg
+    print(f"==> Respuesta UltraMsg: {response.status_code} {response.text}")
 
-# Descargar archivo de imagen
 def descargar_imagen(url_archivo, nombre_archivo="comprobante.jpg"):
     print(f"==> Descargando imagen desde {url_archivo} guardando como {nombre_archivo}")
     r = requests.get(url_archivo)
@@ -36,12 +31,21 @@ def webhook():
     data = request.json
     print(f"==> Data recibida: {data}")
 
-    # Intentar extraer los datos directamente
+    # Filtrar mensajes enviados por el bot para evitar bucles
+    from_me = False
+    if "fromMe" in data:
+        from_me = data["fromMe"]
+    elif "data" in data and "fromMe" in data["data"]:
+        from_me = data["data"]["fromMe"]
+
+    if from_me:
+        print("==> Mensaje propio, ignorando para evitar bucle")
+        return jsonify({"status": "ignored"}), 200
+
     numero = data.get("from")
     mensaje = data.get("body", "")
     tipo = data.get("type", "")
 
-    # Si no están en el primer nivel, probar dentro de 'data'
     if not numero and "data" in data:
         numero = data["data"].get("from")
         mensaje = data["data"].get("body", "")
@@ -98,7 +102,6 @@ def webhook():
             enviar_mensaje(numero, "📷 Por favor, envíe una *imagen* con el texto: UF y altura.")
 
     return jsonify({"status": "ok"}), 200
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
